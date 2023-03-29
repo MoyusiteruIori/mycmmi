@@ -41,9 +41,247 @@ enum { LEA, IMM, JMP, CALL, JZ, JNZ, ENT, ADJ, LEV, LI, LC, SI, SC, PUSH,
        OR,  XOR, AND, EQ, NE, LT, GT, LE, GE, SHL, SHR, ADD, SUB, MUL, DIV, MOD ,
        OPEN, READ, CLOS, PRTF, MALC, MSET, MCMP, EXIT };
 
+// tokens 和类别，运算符按优先级升序排列
+enum {
+  Num = 128, Fun, Sys, Glo, Loc, Id,
+  Char, Else, Enum, If, Int, Return, Sizeof, While,
+  Assign, Cond, Lor, Lan, Or, Xor, And, Eq, Ne, Lt, Gt, Le, Ge, Shl, Shr, Add, Sub, Mul, Div, Mod, Inc, Dec, Brak
+};
+
+// struct identifier
+enum {Token, Hash, Name, Type, Class, Value, BType, BClass, BValue, IdSize};
+
+int token_val;      // 当前 token 的值
+int *current_id,    // 当前分析的 id
+    *symbols;       // 符号表
+
+
+// 变量/函数的类型
+enum { CHAR, INT, PTR };
+int *idmain;                  // main 函数
+
 // 词法分析，获取下一个 token
 void next() {
-    token = *src++;
+    char *last_pos;
+    int hash;
+
+    while (token = *src) {
+        src++;
+        if (token == '\n') {
+            ++line;
+        }
+        else if (token == '#') {
+            while (*src != 0 && *src != '\n') {
+                src++;
+            }
+        }
+        else if ((token >= 'a' && token <= 'z') || (token >= 'A' && token <= 'Z') || (token == '_')) {
+
+            // 解析标识符
+            last_pos = src - 1;
+            hash = token;
+
+            while ((*src >= 'a' && *src <= 'z') || (*src >= 'A' && *src <= 'Z') || (*src >= '0' && *src <= '9') || (*src == '_')) {
+                hash = hash * 147 + *src;
+                src++;
+            }
+
+            // 查找已存在的标识符
+            current_id = symbols;
+            while (current_id[Token]) {
+                if (current_id[Hash] == hash && !memcmp((char *)current_id[Name], last_pos, src - last_pos)) {
+                    // 找到，返回
+                    token = current_id[Token];
+                    return;
+                }
+                current_id = current_id + IdSize;
+            }
+
+            // 存储新的 id
+            current_id[Name] = (int)last_pos;
+            current_id[Hash] = hash;
+            token = current_id[Token] = Id;
+            return;
+        }
+        else if (token >= '0' && token <= '9') {
+            // 解析数字, 包括三种: 十进制(123) 十六进制(0x123) 八进制(017)
+            token_val = token - '0';
+            if (token_val > 0) {
+                // 十进制，开头为[1-9]
+                while (*src >= '0' && *src <= '9') {
+                    token_val = token_val*10 + *src++ - '0';
+                }
+            } else {
+                // 开头为 0
+                if (*src == 'x' || *src == 'X') {
+                    // 十六进制
+                    token = *++src;
+                    while ((token >= '0' && token <= '9') || (token >= 'a' && token <= 'f') || (token >= 'A' && token <= 'F')) {
+                        token_val = token_val * 16 + (token & 15) + (token >= 'A' ? 9 : 0);
+                        token = *++src;
+                    }
+                } else {
+                    // 八进制
+                    while (*src >= '0' && *src <= '7') {
+                        token_val = token_val*8 + *src++ - '0';
+                    }
+                }
+            }
+
+            token = Num;
+            return;
+        }
+        else if (token == '"' || token == '\'') {
+            // 解析字符串常量, 转义字符只支持 ‘\n’
+            // 将字符串常量存入 data 段中
+            last_pos = data;
+            while (*src != 0 && *src != token) {
+                token_val = *src++;
+                if (token_val == '\\') {
+                    // 转义字符
+                    token_val = *src++;
+                    if (token_val == 'n') {
+                        token_val = '\n';
+                    }
+                }
+
+                if (token == '"') {
+                    *data++ = token_val;
+                }
+            }
+
+            src++;
+            // 如果是单个字符，返回 Num token
+            if (token == '"') {
+                token_val = (int)last_pos;
+            } else {
+                token = Num;
+            }
+
+            return;
+        }
+        else if (token == '/') {
+            if (*src == '/') {
+                // 跳过注释
+                while (*src != 0 && *src != '\n') {
+                    ++src;
+                }
+            } else {
+                // 除法运算符
+                token = Div;
+                return;
+            }
+        }
+        else if (token == '=') {
+            // 解析 '==' '='
+            if (*src == '=') {
+                src ++;
+                token = Eq;
+            } else {
+                token = Assign;
+            }
+            return;
+        }
+        else if (token == '+') {
+            // 解析 '+' '++'
+            if (*src == '+') {
+                src ++;
+                token = Inc;
+            } else {
+                token = Add;
+            }
+            return;
+        }
+        else if (token == '-') {
+            // 解析 '-' '--'
+            if (*src == '-') {
+                src ++;
+                token = Dec;
+            } else {
+                token = Sub;
+            }
+            return;
+        }
+        else if (token == '!') {
+            // 解析 '!='
+            if (*src == '=') {
+                src++;
+                token = Ne;
+            }
+            return;
+        }
+        else if (token == '<') {
+            // 解析 '<=', '<<' '<'
+            if (*src == '=') {
+                src ++;
+                token = Le;
+            } else if (*src == '<') {
+                src ++;
+                token = Shl;
+            } else {
+                token = Lt;
+            }
+            return;
+        }
+        else if (token == '>') {
+            // 解析 '>=', '>>' '>'
+            if (*src == '=') {
+                src ++;
+                token = Ge;
+            } else if (*src == '>') {
+                src ++;
+                token = Shr;
+            } else {
+                token = Gt;
+            }
+            return;
+        }
+        else if (token == '|') {
+            // 解析 '|' '||'
+            if (*src == '|') {
+                src ++;
+                token = Lor;
+            } else {
+                token = Or;
+            }
+            return;
+        }
+        else if (token == '&') {
+            // 解析 '&' '&&'
+            if (*src == '&') {
+                src ++;
+                token = Lan;
+            } else {
+                token = And;
+            }
+            return;
+        }
+        else if (token == '^') {
+            token = Xor;
+            return;
+        }
+        else if (token == '%') {
+            token = Mod;
+            return;
+        }
+        else if (token == '*') {
+            token = Mul;
+            return;
+        }
+        else if (token == '[') {
+            token = Brak;
+            return;
+        }
+        else if (token == '?') {
+            token = Cond;
+            return;
+        }
+        else if (token == '~' || token == ';' || token == '{' || token == '}' || token == '(' || token == ')' || token == ']' || token == ',' || token == ':') {
+            // 直接返回字符作为 token
+            return;
+        }
+    }
+
 }
 
 // 解析表达式
@@ -114,6 +352,7 @@ int eval() {
 
 #undef int
 
+
 int main(int argc, char **argv) {
 
 #define int long long
@@ -165,16 +404,28 @@ int main(int argc, char **argv) {
     bp = sp = (int *)((int)stack + poolsize);
     ax = 0;
 
-    i = 0;
-    text[i++] = IMM;
-    text[i++] = 10;
-    text[i++] = PUSH;
-    text[i++] = IMM;
-    text[i++] = 20;
-    text[i++] = ADD;
-    text[i++] = PUSH;
-    text[i++] = EXIT;
-    pc = text;
+    src = "char else enum if int return sizeof while "
+          "open read close printf malloc memset memcmp exit void main";
+
+     // 保留字加入符号表
+    i = Char;
+    while (i <= While) {
+        next();
+        current_id[Token] = i++;
+    }
+
+    // 库函数加入符号表
+    i = OPEN;
+    while (i <= EXIT) {
+        next();
+        current_id[Class] = Sys;
+        current_id[Type] = INT;
+        current_id[Value] = i++;
+    }
+
+    next(); current_id[Token] = Char; // void 类型
+    next(); idmain = current_id; // main 函数
+
 
     program();
     return eval();
