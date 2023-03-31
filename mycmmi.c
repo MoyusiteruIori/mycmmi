@@ -2,6 +2,8 @@
 #include <stdlib.h>
 #include <memory.h>
 #include <string.h>
+#include <unistd.h>
+#include <fcntl.h>
 #define int long long
 
 int token;              // 当前 token
