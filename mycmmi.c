@@ -46,7 +46,7 @@ int *pc,
 // 1: 实参 2
 // 2: 实参 3
 // 3: ra
-// 4: 久 bp  <- index_of_bp
+// 4: 旧 bp  <- index_of_bp
 // 5: 局部变量 1
 // 6: 局部变量 2
 int index_of_bp; // index of bp pointer on stack
@@ -1144,7 +1144,7 @@ void global_declaration() {
 
     basetype = INT;
 
-    // 解析枚举，但读处理
+    // 解析枚举，单独处理
     if (token == Enum) {
         // enum [id] { a = 10, b = 20, ... }
         match(Enum);
