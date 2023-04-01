@@ -1220,6 +1220,22 @@ void program() {
     }
 }
 
+char* insts;    // debug 用
+void dump_asm() {
+    insts = "IMM ,LEA ,JMP ,JZ  ,JNZ ,CALL,ENT ,ADJ ,LEV ,LI  ,LC  ,SI  ,SC  ,PUSH,"
+        "OR  ,XOR ,AND ,EQ  ,NE  ,LT  ,GT  ,LE  ,GE  ,SHL ,SHR ,ADD ,SUB ,MUL ,DIV ,MOD ,"
+        "OPEN,READ,CLOS,PRTF,MALC,MSET,MCMP,EXIT,";
+    while (old_text < text) {
+        printf("%p %8.4s", ++old_text, insts + (*old_text * 5));
+        if (*old_text < LEV) {
+            ++old_text;
+            printf("    0x%x (%lld)\n", *old_text, *old_text);
+        }
+        else
+            printf("\n");
+    }
+}
+
 // 虚拟机入口
 int eval() {
     int op, *tmp;
@@ -1296,7 +1312,7 @@ int main(int argc, char **argv) {
         ++argv;
     }
     if (argc < 1) {
-        printf("usage: xc [-s] [-d] file ...\n");
+        printf("usage: %c [-s] [-d] file ...\n", argv[0]);
         return -1;
     }
 
@@ -1368,6 +1384,15 @@ int main(int argc, char **argv) {
     close(fd);
 
     program();
+
+    if (assembly) {
+        dump_asm();
+        return 0;
+    }
+
+    if (debug) {
+        dump_asm();
+    }
 
     if (!(pc = (int *)idmain[Value])) {
         printf("main() not defined\n");
